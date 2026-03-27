@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "aqi-bridge"
 version = "1.0.0"
@@ -19,6 +23,13 @@ testpaths = ["apps/aqi-bridge/tests"]
 filterwarnings = [
     "ignore:The 'app' shortcut is now deprecated:DeprecationWarning",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "apps/aqi-bridge"}
+
+[tool.setuptools.packages.find]
+where = ["apps/aqi-bridge"]
+include = ["aqi_bridge*"]
 
 [tool.mypy]
 python_version = "3.12"

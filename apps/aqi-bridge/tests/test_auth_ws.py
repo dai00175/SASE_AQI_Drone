@@ -18,11 +18,20 @@ import importlib
 import os
 from unittest.mock import patch
 
+import httpx
+
 # ---------------------------------------------------------------------------
 # _check_ws_auth unit tests (pure function, no mocking needed)
 # ---------------------------------------------------------------------------
 GOOD_TOKEN = "hunter2"
 BAD_TOKEN = "wrong"
+
+
+async def _get_json(app, path: str, headers: dict[str, str] | None = None) -> tuple[int, dict]:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.get(path, headers=headers)
+    return resp.status_code, resp.json()
 
 
 def _import_check_ws_auth(mode: str, token: str = GOOD_TOKEN):
@@ -198,7 +207,6 @@ def test_health_auth_fields():
     from unittest.mock import MagicMock
 
     import aqi_bridge.config as cfg
-    from fastapi.testclient import TestClient
     importlib.reload(cfg)
     import aqi_bridge.api as srv
     importlib.reload(srv)
@@ -212,21 +220,19 @@ def test_health_auth_fields():
     queue = asyncio.Queue(maxsize=4)
     app = srv.create_app(mock_ble, queue)
 
-    with TestClient(app) as client:
-        resp = client.get("/health")
-        assert resp.status_code == 200
-        body = resp.json()
+    status_code, body = asyncio.run(_get_json(app, "/health"))
+    assert status_code == 200
 
-        assert "auth" in body, f"No 'auth' key in /health: {body}"
-        assert "mode" in body["auth"]
-        assert "token_configured" in body["auth"]
-        assert "ws_clients" in body
-        assert "total" in body["ws_clients"]
-        assert "authenticated" in body["ws_clients"]
-        assert "unauthenticated" in body["ws_clients"]
+    assert "auth" in body, f"No 'auth' key in /health: {body}"
+    assert "mode" in body["auth"]
+    assert "token_configured" in body["auth"]
+    assert "ws_clients" in body
+    assert "total" in body["ws_clients"]
+    assert "authenticated" in body["ws_clients"]
+    assert "unauthenticated" in body["ws_clients"]
 
-        print(f"  auth={body['auth']}")
-        print(f"  ws_clients={body['ws_clients']}")
+    print(f"  auth={body['auth']}")
+    print(f"  ws_clients={body['ws_clients']}")
     print("  SUCCESS")
 
 
@@ -284,7 +290,6 @@ def test_tls_reverse_proxy_validation():
     from unittest.mock import MagicMock
 
     import aqi_bridge.config as cfg
-    from fastapi.testclient import TestClient
     importlib.reload(cfg)
     import aqi_bridge.api as srv
     importlib.reload(srv)
@@ -298,13 +303,10 @@ def test_tls_reverse_proxy_validation():
     queue = asyncio.Queue(maxsize=4)
     app = srv.create_app(mock_ble, queue)
 
-    with TestClient(app) as client:
-        # Simulate connection to /ws with WS_AUTH_TOKEN via X-Forwarded-Proto
-        try:
-            with client.websocket_connect("/ws?token=hunter2", headers={"X-Forwarded-Proto": "https"}):
-                assert True
-        except Exception:
-            pass
+    status_code, _body = asyncio.run(
+        _get_json(app, "/health", headers={"X-Forwarded-Proto": "https"})
+    )
+    assert status_code == 200
     print("  SUCCESS: Reverse proxy headers handled explicitly without crash")
 
 

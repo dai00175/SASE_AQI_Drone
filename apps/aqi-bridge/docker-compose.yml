@@ -1,24 +1,28 @@
-version: '3.8'
-
 services:
   bridge:
     build: .
     restart: always
-    network_mode: host  # Required for BLE access via D-Bus on Linux
+    network_mode: host
     environment:
       - PYTHONPATH=.
       - WS_AUTH_MODE=required
-      - WS_AUTH_TOKEN=${WS_AUTH_TOKEN:-default-secret-token}
-      - ALLOW_TOKEN_ROTATION=true
+      - WS_AUTH_TOKEN=${WS_AUTH_TOKEN:?set WS_AUTH_TOKEN before starting docker compose}
+      - WS_ALLOWED_ORIGINS=${WS_ALLOWED_ORIGINS:-https://drone.example.com}
+      - ALLOW_TOKEN_ROTATION=false
+      - BLE_CRC_REQUIRED=true
+      - BLE_USE_BINARY_COMMANDS=true
+      - COMMAND_QUEUE_SIZE=4
       - LOG_FORMAT=json
       - LOG_LEVEL=INFO
     volumes:
-      - /var/run/dbus:/var/run/dbus
+      - /var/run/dbus:/var/run/dbus:ro
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    security_opt:
+      - no-new-privileges:true
 
   nginx:
     image: nginx:alpine
@@ -27,6 +31,6 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/certs:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - bridge

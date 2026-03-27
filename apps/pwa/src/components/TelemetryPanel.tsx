@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { TelemetryMessage } from '../hooks/useDroneLink';
 import { Activity, Wind, Thermometer, Droplets, Battery } from 'lucide-react';
 
@@ -67,7 +68,7 @@ export function TelemetryPanel({ data }: { data: TelemetryMessage | null }) {
     );
 }
 
-function MetricCard({ icon, label, value, unit = '', alert = false }: { icon: React.ReactNode, label: string, value: string | number, unit?: string, alert?: boolean }) {
+function MetricCard({ icon, label, value, unit = '', alert = false }: { icon: ReactNode, label: string, value: string | number, unit?: string, alert?: boolean }) {
     return (
         <div className={`p-4 bg-slate-800/80 rounded-xl border ${alert ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-slate-700/50'} backdrop-blur-sm flex flex-col justify-between`}>
             <div className="flex items-center gap-2 mb-2">

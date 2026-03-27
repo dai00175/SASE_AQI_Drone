@@ -351,7 +351,11 @@ async def _run() -> None:
             name="cmd_consumer",
         ),
         asyncio.create_task(
-            broadcast_telemetry_loop(ble, app.state.clients),
+            broadcast_telemetry_loop(
+                ble,
+                app.state.clients,
+                app.state.authenticated_clients,
+            ),
             name="telem_broadcast",
         ),
         asyncio.create_task(

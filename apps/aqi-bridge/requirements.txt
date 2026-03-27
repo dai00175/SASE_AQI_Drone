@@ -3,7 +3,7 @@ fastapi
 uvicorn[standard]
 pydantic
 websockets
-httpx
+httpx==0.27.0
 python-json-logger
 pytest-asyncio
 hypothesis

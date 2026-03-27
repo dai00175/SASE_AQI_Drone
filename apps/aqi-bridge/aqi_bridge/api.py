@@ -22,22 +22,22 @@ WebSocket Authentication Policy
   disabled  — No auth checks.  All connections accepted.
               Suitable only for local dev on a trusted LAN.
 
-  optional  — Token present and valid → authenticated (may send commands).
-              Token absent → unauthenticated (allowed but telemetry-only).
-              Token present but invalid → rejected (code 1008).
+  telemetry_only  — Token present and valid → authenticated (may send commands).
+                    Token absent → unauthenticated (allowed but telemetry-only).
+                    Token present but invalid → rejected (code 1008).
 
   required  — Token present and valid → accepted.
               Token absent OR invalid → rejected (code 1008, Policy Violation).
               Unauthenticated clients are never added to the registry.
 
-  Enforcement order (required/optional):
+  Enforcement order (required/telemetry_only):
     1. Parse token from query string.
     2. Evaluate auth result (allowed, authenticated) — see _check_ws_auth().
     3. If NOT allowed: close(1008) and return WITHOUT calling ws.accept() first
        (Starlette accepts before closing, so we close immediately after accept
         to properly signal rejection while the client sees a close frame).
     4. Register client in set ONLY if allowed.
-    5. In optional mode, unauthenticated (telemetry-only) clients may receive
+    5. In telemetry_only mode, unauthenticated clients may receive
        telemetry but CANNOT send control commands.
 
 Locking Rules
@@ -94,6 +94,7 @@ from aqi_bridge.config import (
     COMMAND_QUEUE_SIZE,
     MAX_WS_CLIENTS,
     TELEMETRY_BROADCAST_HZ,
+    WS_ALLOWED_ORIGINS,
     WS_AUTH_FAILURE_CLOSE_CODE,
     WS_AUTH_MODE,
     WS_AUTH_QUERY_PARAM,
@@ -328,11 +329,13 @@ def create_app(
 
     app = FastAPI(title="AQI Drone Bridge", version="1.0.0")
 
+    cors_origins = ["*"] if "*" in WS_ALLOWED_ORIGINS else list(WS_ALLOWED_ORIGINS)
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -340,8 +343,7 @@ def create_app(
     # Plain set is safe: all mutations happen on the single asyncio event loop.
     # Only clients that PASS auth are ever added here.
     clients: Set[WebSocket] = set()
-    # Track authenticated count separately for /health reporting.
-    _authenticated_count: list[int] = [0]
+    authenticated_clients: Set[WebSocket] = set()
 
     # ----------------------------------------------------------------
     # Health + metrics endpoint
@@ -362,8 +364,8 @@ def create_app(
             "ws_clients": {
                 "total": len(clients),
                 "capacity": MAX_WS_CLIENTS,
-                "authenticated": _authenticated_count[0],
-                "unauthenticated": len(clients) - _authenticated_count[0],
+                "authenticated": len(authenticated_clients),
+                "unauthenticated": len(clients) - len(authenticated_clients),
                 "rejected_capacity": _metrics.clients_rejected_capacity,
             },
             "system": {
@@ -405,7 +407,7 @@ def create_app(
 
         Auth is evaluated BEFORE the client is added to the registry.
         Rejected clients receive a 1008 (Policy Violation) close frame.
-        Unauthenticated clients (optional mode) are in the registry but
+        Unauthenticated clients (telemetry_only mode) are in the registry but
         may ONLY receive telemetry — control messages are silently dropped.
         """
         # --- Step 0: Enforce strict connection memory bounds -----------------
@@ -437,13 +439,13 @@ def create_app(
         # --- Step 2: Register accepted client --------------------------------
         clients.add(ws)
         if authenticated:
-            _authenticated_count[0] += 1
+            authenticated_clients.add(ws)
 
         logger.info(
             "WS client ACCEPTED from %s | mode=%s | authenticated=%s | "
             "reason=%s | total=%d (auth=%d)",
             ws.client, WS_AUTH_MODE, authenticated, reason,
-            len(clients), _authenticated_count[0],
+            len(clients), len(authenticated_clients),
         )
 
         # --- Step 3: Message loop --------------------------------------------
@@ -451,11 +453,11 @@ def create_app(
             while True:
                 raw = await ws.receive_text()
 
-                # In optional mode, unauthenticated clients are telemetry-only.
+                # In telemetry_only mode, unauthenticated clients are telemetry-only.
                 if not authenticated:
                     logger.debug(
                         "Control message from unauthenticated client %s dropped "
-                        "(telemetry-only in optional mode)",
+                        "(telemetry-only mode)",
                         ws.client,
                     )
                     continue
@@ -473,17 +475,18 @@ def create_app(
         finally:
             clients.discard(ws)
             if authenticated:
-                _authenticated_count[0] = max(0, _authenticated_count[0] - 1)
+                authenticated_clients.discard(ws)
             logger.info(
                 "WS client DISCONNECTED from %s | authenticated=%s | "
                 "total=%d (auth=%d)",
-                ws.client, authenticated, len(clients), _authenticated_count[0],
+                ws.client, authenticated, len(clients), len(authenticated_clients),
             )
 
     # ----------------------------------------------------------------
     # Attach helpers as app state so main.py can access them
     # ----------------------------------------------------------------
     app.state.clients = clients  # type: ignore[attr-defined]
+    app.state.authenticated_clients = authenticated_clients  # type: ignore[attr-defined]
     app.state.ble = ble          # type: ignore[attr-defined]
 
     return app
@@ -510,9 +513,15 @@ def _handle_control_message(
 
     # --- Deadman Safety Contract: Control Inhibition ---
     if control_inhibited and control_inhibited[0]:
-        if getattr(cmd, "arm", False):
-            # Explicit re-arm command resets the lockout
-            logger.warning("Explicit RE-ARM received. Lifting control inhibition.")
+        is_neutral_rearm = (
+            getattr(cmd, "arm", False)
+            and cmd.vx == 0.0
+            and cmd.vy == 0.0
+            and cmd.vz == 0.0
+            and cmd.yaw == 0.0
+        )
+        if is_neutral_rearm:
+            logger.warning("Explicit neutral RE-ARM received. Lifting control inhibition.")
             control_inhibited[0] = False
         else:
             # Drop all other inputs (like pegging the joystick forward)
@@ -525,6 +534,7 @@ def _handle_control_message(
 async def broadcast_telemetry_loop(
     ble: "BLEDroneClient",
     clients: Set[WebSocket],
+    authenticated_clients: Set[WebSocket] | None = None,
 ) -> None:
     """
     Periodically snapshot the latest telemetry and fan-out to every
@@ -607,6 +617,8 @@ async def broadcast_telemetry_loop(
             # ----------------------------------------------------------------
             for ws in dead:
                 clients.discard(ws)
+                if authenticated_clients is not None:
+                    authenticated_clients.discard(ws)
             if dead:
                 total_dropped += len(dead)
                 logger.info(

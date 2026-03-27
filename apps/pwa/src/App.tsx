@@ -29,7 +29,19 @@ function useIsMobile(): boolean {
 }
 
 function App() {
-  const { isConnected, telemetry, setArmed, updateAxes, currentCommand, txRate, bridgeIp, setBridgeIp } = useDroneLink();
+  const {
+    isConnected,
+    error,
+    telemetry,
+    setArmed,
+    updateAxes,
+    currentCommand,
+    txRate,
+    bridgeHost,
+    setBridgeHost,
+    bridgeToken,
+    setBridgeToken,
+  } = useDroneLink();
   const [isArmed, setIsArmedUI] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const isMobile = useIsMobile();
@@ -54,11 +66,11 @@ function App() {
     updateAxes({ vx: 0, vy: 0, vz: 0, yaw: 0 });
   };
 
-  const handleArmToggle = () => {
+  const handleArmToggle = useCallback(() => {
     const nextState = !isArmed;
     setIsArmedUI(nextState);
     setArmed(nextState);
-  };
+  }, [isArmed, setArmed]);
 
   // Desktop keyboard controls (WASD + Arrow Keys)
   const keysDown = useState<Set<string>>(() => new Set())[0];
@@ -105,7 +117,7 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isMobile, keysDown, computeKeyboardAxes]);
+  }, [isMobile, keysDown, computeKeyboardAxes, handleArmToggle]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans overflow-hidden select-none">
@@ -125,13 +137,23 @@ function App() {
                 <span className="ml-2 text-slate-600 hidden sm:inline">{isMobile ? '📱 TOUCH' : '⌨️ KEYBOARD'}</span>
               </p>
               <div className="flex items-center gap-2 bg-slate-800/80 rounded-md px-2 py-1 border border-slate-700">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Bridge IP:</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Bridge Host:</span>
                 <input
                   type="text"
-                  value={bridgeIp}
-                  onChange={(e) => setBridgeIp(e.target.value)}
+                  value={bridgeHost}
+                  onChange={(e) => setBridgeHost(e.target.value)}
                   className="bg-transparent text-xs font-mono text-cyan-400 focus:outline-none w-24 sm:w-32 placeholder-slate-600"
                   placeholder="e.g. 192.168.1.5"
+                />
+              </div>
+              <div className="flex items-center gap-2 bg-slate-800/80 rounded-md px-2 py-1 border border-slate-700">
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Token:</span>
+                <input
+                  type="password"
+                  value={bridgeToken}
+                  onChange={(e) => setBridgeToken(e.target.value)}
+                  className="bg-transparent text-xs font-mono text-orange-300 focus:outline-none w-24 sm:w-32 placeholder-slate-600"
+                  placeholder="optional"
                 />
               </div>
             </div>
@@ -167,6 +189,11 @@ function App() {
 
       {/* MAIN CONTENT DASHBOARD */}
       <main className="flex-1 p-4 lg:p-6 flex flex-col gap-6 relative">
+        {error ? (
+          <section className="w-full rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-100">
+            {error}
+          </section>
+        ) : null}
 
         {/* TELEMETRY LAYER */}
         <section className="w-full">

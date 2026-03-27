@@ -1,58 +1,38 @@
 # SASE AQI Drone
 
-Welcome to the SASE AQI Drone project! This repository contains the complete software stack for a drone equipped with Air Quality Index (AQI) sensors, controlled via a web interface.
+This repository contains a three-part AQI drone stack:
 
-## System Overview
+1. `firmware/aqi_drone_ble/`: BLE firmware for the drone-side sensor and command link.
+2. `apps/aqi-bridge/`: Python bridge that connects to the BLE peripheral and exposes telemetry plus control over WebSocket.
+3. `apps/pwa/`: React PWA for pilot controls and AQI telemetry display.
 
-The project is composed of three main components working together in real time:
+## What Is Production-Ready Now
 
-1. **Arduino (Drone Firmware)**: Collects sensor data (telemetry) and controls the drone's flight based on received commands. Lives on the physical drone.
-2. **Python Bridge**: A local service running on a computer that acts as the strict middleman between the drone's Bluetooth radio and the web.
-3. **Progressive Web App (PWA)**: The user interface running on a phone or laptop, providing joystick controls and a dashboard for telemetry data.
+- The bridge has an explicit environment-driven configuration surface.
+- WebSocket auth, queue bounds, CRC enforcement, and health reporting are implemented in code.
+- Docker Compose now includes a real Nginx config instead of placeholder references.
+- The PWA can be pointed at a real bridge host and token without source edits.
+- The repo now includes a dedicated BLE firmware sketch that publishes AQI telemetry in the format the bridge expects.
 
----
+## What Still Requires Physical Validation
 
-## How It Works: The Python Bridge
+- BLE MTU negotiation and link stability on the actual board and radio environment.
+- Sensor calibration and warm-up behavior for the ENS160/AHT20-AHT21 package.
+- Your real flight-controller integration inside `applyControlCommand()` in the firmware.
+- End-to-end fail-safe verification on the ground before any flight.
 
-A “Python bridge” (`apps/aqi-bridge/`) is a local service on your laptop that sits between two links:
+## Recommended Bring-Up Order
 
-*   **BLE link**: laptop ↔ Arduino (telemetry + commands)
-*   **Web link**: laptop ↔ phone PWA (telemetry + joystick commands)
+1. Flash `firmware/aqi_drone_ble/aqi_drone_ble.ino` onto a BLE-capable board mounted on the drone.
+2. Start the bridge from `apps/aqi-bridge/` with a real `WS_AUTH_TOKEN`.
+3. Confirm `/health` shows `ble_connected=true` and inspect `negotiated_mtu`.
+4. Start the PWA from `apps/pwa/`, set the bridge host and token, and verify telemetry updates.
+5. Ground-test arming, disarming, disconnect fail-safe, and stale-command behavior before any rotor spin-up.
 
-It does exactly four jobs, and nothing else:
+## Key Documentation
 
-1. Connect and automatically reconnect to the Arduino over Bluetooth Low Energy (BLE).
-2. Subscribe to telemetry notifications and parse the incoming JSON data.
-3. Accept control commands from the PWA via a high-throughput WebSocket.
-4. Forward those commands to the Arduino over BLE (via characteristic writes).
-
-## Architecture
-
-### 1) Process Diagram
-
-```text
-      Arduino (BLE Peripheral)                             Python Bridge (BLE Central)                              PWA UI (Phone/Browser)
-                 |                                                      |                                                     |
-  [Sensors] ---> | ----- Telemetry (Notify Char) ---------------------> | ----- Telemetry (WebSocket) ----------------------> | [Dashboard] 
-  [Motors]  <--- | <---- Command (Write Char) ------------------------- | <---- Joystick (WebSocket) ------------------------ | [Touch Controls]
-                 |                                                      |                                                     |
-```
-
-### 2) BLE Side Contract
-
-The system uses a custom GATT service with two primary characteristics representing the contract between the Arduino and the Laptop:
-
-*   **`TELEMETRY_CHAR` (Notify)**
-    *   **Payload**: JSON bytes (or newline-delimited JSON if the device chunks large payloads).
-    *   **Direction**: Arduino ➔ Bridge.
-
-*   **`COMMAND_CHAR` (Write)**
-    *   *Prefer “Write Without Response” for absolute minimum latency.*
-    *   **Payload**: Compact JSON command or binary control structure.
-    *   **Direction**: Bridge ➔ Arduino.
-
-## Directory Structure
-*   `apps/aqi-bridge/`: The Python BLE-to-WebSocket bridge service.
-*   `apps/pwa/`: The frontend Progressive Web App interface.
-*   `firmware/`: Arduino sketches and hardware experiments.
-*   `docs/`: Detailed technical documentation (`architecture.md`, `protocol.md`, `field_readiness.md`).
+- Bridge service: `apps/aqi-bridge/docs/README.md`
+- Bridge architecture: `apps/aqi-bridge/docs/architecture.md`
+- Field checklist: `apps/aqi-bridge/docs/field_readiness.md`
+- PWA usage: `apps/pwa/README.md`
+- Drone firmware contract: `firmware/aqi_drone_ble/README.md`

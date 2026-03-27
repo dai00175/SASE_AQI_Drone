@@ -56,12 +56,14 @@ from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 
 from aqi_bridge.config import (
+    BLE_CONNECTION_TIMEOUT_S,
     BLE_CRC_REQUIRED,
     BLE_DEFAULT_PAYLOAD_BYTES,
     BLE_DEVICE_NAME,
     BLE_MIN_DIRECT_PAYLOAD_BYTES,
     BLE_OVERHEAD_BYTES,
     BLE_RECONNECT_DELAY_S,
+    BLE_SCAN_TIMEOUT_S,
     BLE_TARGET_MTU_BYTES,
     BLE_USE_BINARY_COMMANDS,
     CHUNK_ASSEMBLY_TIMEOUT_S,
@@ -147,7 +149,7 @@ class BLEDroneClient:
             logger.warning("BLE loop intentional crash triggered")
             raise RuntimeError("Intentional crash for reliability testing")
 
-        devices = await BleakScanner.discover(timeout=5.0)
+        devices = await BleakScanner.discover(timeout=BLE_SCAN_TIMEOUT_S)
         for d in devices:
             if d.name and BLE_DEVICE_NAME.lower() in d.name.lower():
                 logger.info("Found device: %s [%s]", d.name, d.address)
@@ -165,7 +167,7 @@ class BLEDroneClient:
             address,
             disconnected_callback=self._on_disconnect,
         )
-        await self._client.connect()
+        await self._client.connect(timeout=BLE_CONNECTION_TIMEOUT_S)
 
         # --- MTU negotiation ------------------------------------------------
         # bleak negotiates MTU automatically during connection on most backends.

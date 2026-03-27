@@ -26,14 +26,33 @@ export function useDroneLink() {
     const [error, setError] = useState<string | null>(null);
     const [telemetry, setTelemetry] = useState<TelemetryMessage | null>(null);
 
-    // Dynamic bridge IP for hosted PWA
-    const [bridgeIp, setBridgeIpState] = useState(() => {
-        return localStorage.getItem('sase_bridge_ip') || window.location.hostname;
+    const defaultBridgeHost = (() => {
+        if (typeof window === 'undefined') return '127.0.0.1';
+        return window.location.hostname || '127.0.0.1';
+    })();
+    const defaultBridgeToken = import.meta.env.VITE_BRIDGE_WS_TOKEN ?? '';
+
+    const [bridgeHost, setBridgeHostState] = useState(() => {
+        if (typeof window === 'undefined') return defaultBridgeHost;
+        return localStorage.getItem('sase_bridge_host') || defaultBridgeHost;
+    });
+    const [bridgeToken, setBridgeTokenState] = useState(() => {
+        if (typeof window === 'undefined') return defaultBridgeToken;
+        return localStorage.getItem('sase_bridge_token') || defaultBridgeToken;
     });
 
-    const setBridgeIp = useCallback((ip: string) => {
-        setBridgeIpState(ip);
-        localStorage.setItem('sase_bridge_ip', ip);
+    const setBridgeHost = useCallback((host: string) => {
+        setBridgeHostState(host);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('sase_bridge_host', host);
+        }
+    }, []);
+
+    const setBridgeToken = useCallback((token: string) => {
+        setBridgeTokenState(token);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('sase_bridge_token', token);
+        }
     }, []);
 
     // Developer metrics
@@ -130,7 +149,7 @@ export function useDroneLink() {
 
     // ---------- CONNECTION MANAGEMENT ----------
 
-    const connect = useCallback(() => {
+    const connect = useCallback(function reconnect() {
         // Don't reconnect if we've been unmounted
         if (unmountedRef.current) return;
 
@@ -138,13 +157,23 @@ export function useDroneLink() {
         if (socketRef.current?.readyState === WebSocket.OPEN ||
             socketRef.current?.readyState === WebSocket.CONNECTING) return;
 
-        const wssUrl = `ws://${bridgeIp}:8765/ws?token=your_token_here`;
-        const ws = new WebSocket(wssUrl);
+        const protocol = import.meta.env.VITE_BRIDGE_WS_PROTOCOL
+            ?? (window.location.protocol === 'https:' ? 'wss' : 'ws');
+        const port = import.meta.env.VITE_BRIDGE_WS_PORT ?? '8765';
+        const host = bridgeHost.trim() || defaultBridgeHost;
+        const params = new URLSearchParams();
+        if (bridgeToken.trim()) {
+            params.set('token', bridgeToken.trim());
+        }
+
+        const suffix = params.toString();
+        const wsUrl = `${protocol}://${host}:${port}/ws${suffix ? `?${suffix}` : ''}`;
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
             setIsConnected(true);
             setError(null);
-            console.log(`Drone WebSocket Connected to ${bridgeIp}`);
+            console.log(`Drone WebSocket Connected to ${host}`);
         };
 
         ws.onmessage = (event) => {
@@ -156,9 +185,12 @@ export function useDroneLink() {
             }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             setIsConnected(false);
             console.log("Drone WebSocket Disconnected");
+            if (event?.code === 1008) {
+                setError('Bridge rejected the connection. Check WS auth mode and token.');
+            }
 
             // SAFETY: Force disarm on disconnect — no runaway commands
             joystickStateRef.current = { vx: 0, vy: 0, vz: 0, yaw: 0, arm: false };
@@ -169,7 +201,7 @@ export function useDroneLink() {
 
             // Auto-reconnect with cleanup tracking
             if (!unmountedRef.current) {
-                reconnectTimerRef.current = window.setTimeout(connect, 3000);
+                reconnectTimerRef.current = window.setTimeout(reconnect, 3000);
             }
         };
 
@@ -179,7 +211,7 @@ export function useDroneLink() {
         };
 
         socketRef.current = ws;
-    }, [bridgeIp]); // Re-create connect function if IP changes
+    }, [bridgeHost, bridgeToken, defaultBridgeHost]);
 
     useEffect(() => {
         unmountedRef.current = false;
@@ -215,7 +247,9 @@ export function useDroneLink() {
         updateAxes,
         currentCommand: joystickStateRef.current, // For the debug view
         txRate, // Commands sent per second
-        bridgeIp,
-        setBridgeIp
+        bridgeHost,
+        setBridgeHost,
+        bridgeToken,
+        setBridgeToken
     };
 }
