@@ -36,3 +36,14 @@ This repository contains a three-part AQI drone stack:
 - Field checklist: `apps/aqi-bridge/docs/field_readiness.md`
 - PWA usage: `apps/pwa/README.md`
 - Drone firmware contract: `firmware/aqi_drone_ble/README.md`
+
+## GitHub Pages Deployment
+
+The PWA deployment workflow in `.github/workflows/deploy-pwa.yml` publishes with GitHub Pages.
+
+Before the workflow can succeed, the repository must be configured one of these two ways:
+
+1. In GitHub repository settings, set `Settings > Pages > Build and deployment > Source` to `GitHub Actions`.
+2. Or add a repository secret named `PAGES_ENABLEMENT_TOKEN` with permission to enable Pages, then let the workflow auto-enable it.
+
+The workflow is already updated for Node 24-capable action runtimes.

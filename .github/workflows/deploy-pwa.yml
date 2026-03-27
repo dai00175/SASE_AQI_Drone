@@ -5,6 +5,9 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   pages: write
@@ -22,14 +25,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
           cache-dependency-path: "./apps/pwa/package-lock.json"
+
+      - name: Configure GitHub Pages with enablement
+        if: ${{ secrets.PAGES_ENABLEMENT_TOKEN != '' }}
+        uses: actions/configure-pages@v5
+        with:
+          token: ${{ secrets.PAGES_ENABLEMENT_TOKEN }}
+          enablement: true
+
+      - name: Configure GitHub Pages
+        if: ${{ secrets.PAGES_ENABLEMENT_TOKEN == '' }}
+        uses: actions/configure-pages@v5
 
       - name: Install dependencies
         working-directory: ./apps/pwa
@@ -39,11 +53,8 @@ jobs:
         working-directory: ./apps/pwa
         run: npm run build
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: "./apps/pwa/dist"
 
