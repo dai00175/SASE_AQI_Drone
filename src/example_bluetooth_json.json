@@ -1,0 +1,11 @@
+{
+  "mission_id": 101,
+  "commands": [
+    {"action": "up", "value": 2.0},
+    {"action": "right", "value": 2.0},
+    {"action": "right", "value": 5.0},
+    {"action": "land", "value": 0}
+    // Can be any size / length of commands if in programmed path mode
+    // if in user input mode, then only one command is sent. aka up value: strength of up.
+  ]
+}
