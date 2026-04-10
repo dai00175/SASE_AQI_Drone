@@ -2,6 +2,7 @@
 #include "motors.h"
 #include "pid.h"
 
+// Calibration code
 class ESC {
 private:
     int _pin;
@@ -52,6 +53,12 @@ public:
             analogWriteFrequency(_pin, _freq_hz);
         }
     }
+    void setResolution(int bits) {
+        _max_duty = (1 << bits) - 1;
+        if (_pin != -1) {
+            analogWriteResolution(bits);
+        }
+    }
 };
 
 // --- MOTOR PINS ---
@@ -72,11 +79,12 @@ volatile int thro_des = 0;
 
 void initMotors() {
     for (int i = 0; i < 4; i++) {
+        escs[i].setResolution(12);
         escs[i].attach(motorPins[i], PWM_OFF, PWM_MAX);
         escs[i].setFrequency(PWM_REFRESH_HZ);
         escs[i].writeMicroseconds(PWM_OFF);
     }
-    delay(2000);
+    delay(3000);
 }
 
 void mixMotors() {

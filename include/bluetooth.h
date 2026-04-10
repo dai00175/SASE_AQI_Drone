@@ -4,15 +4,21 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+extern bool bluetoothRxReady;
+extern String bluetoothRxMessage;
+extern bool bluetoothConnected;
+
 void initBluetooth(unsigned long baud = 9600);
 
+void bluetoothResetBuffer();
+
 void bluetoothPoll();
+
+void checkBluetoothTimeout(unsigned long timeoutMs = 5000);
 
 bool bluetoothMessageAvailable();
 
 bool bluetoothReadMessage(String &message);
-
-bool bluetoothParseMessage(const String &message, JsonDocument &doc, DeserializationError &error);
 
 bool bluetoothPackJson(const JsonDocument &doc, String &out);
 

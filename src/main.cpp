@@ -30,7 +30,7 @@ void setup() {
 		}
 	}
 	// Initialize Bluetooth
-	initBluetooth(9600);
+	initBluetooth(38400);
 	// Initialize state machine
 	initStates();
 	// Initialize IMU
@@ -57,18 +57,6 @@ void loop() {
 	getUltrasonicDistanceCM();
 	updateBarometer(); // Update barometer readings (non-blocking)
 	bluetoothPoll();
-	if (bluetoothMessageAvailable()) {
-		String message;
-		if (bluetoothReadMessage(message)) {
-			// TODO: Deserialize `message` and update flight state or commands
-			// Example:
-			// StaticJsonDocument<256> doc;
-			// DeserializationError err;
-			// if (bluetoothParseMessage(message, doc, err)) {
-			//     // Process the JSON object here
-			// }
-		}
-	}
 	// Update state machine based on sensor readings and time
 	updateStates();
 

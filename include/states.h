@@ -9,7 +9,7 @@ enum DroneState {
     LANDING
 };
 
-extern DroneState currentState;
+extern DroneState State;
 
 void initStates();
 void updateStates();

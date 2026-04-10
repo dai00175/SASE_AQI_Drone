@@ -3,6 +3,9 @@
 
 static bool bluetoothRxReady = false;
 static String bluetoothRxMessage;
+static unsigned long lastBluetoothSendTime = 0;
+
+bool bluetoothConnected = true;
 
 static void bluetoothResetBuffer() {
     bluetoothRxReady = false;
@@ -15,47 +18,39 @@ void initBluetooth(unsigned long baud) {
 }
 
 void bluetoothPoll() {
-    while (Serial1.available()) {
+    while (Serial1.available() > 0) {
         char c = (char)Serial1.read();
-
+        lastBluetoothSendTime = millis();
         if (c == '\r') {
             continue;
         }
-
         if (c == '\n') {
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, bluetoothRxMessage);
-            if (!error) {
-                bluetoothRxReady = true;
-            } else {
-                // Parsing failed, reset buffer and ignore this message
-                bluetoothResetBuffer();
-            }
+            bluetoothRxMessage += c;
+            bluetoothRxReady = true;
         }
         else {
             bluetoothRxMessage += c;
         }
     }
+    checkBluetoothTimeout(500);
 }
 
-bool bluetoothMessageAvailable() {
-    return bluetoothRxReady;
+
+void checkBluetoothTimeout(unsigned long timeoutMs) {
+    if (millis() - lastBluetoothSendTime > timeoutMs) {
+        bluetoothConnected = false;
+    }
 }
 
 bool bluetoothReadMessage(String &message) {
     if (!bluetoothRxReady) {
         return false;
     }
-
     message = bluetoothRxMessage;
     bluetoothResetBuffer();
     return true;
 }
 
-bool bluetoothParseMessage(const String &message, JsonDocument &doc, DeserializationError &error) {
-    error = deserializeJson(doc, message);
-    return (error == DeserializationError::Ok);
-}
 
 bool bluetoothPackJson(const JsonDocument &doc, String &out) {
     out = String();
@@ -69,6 +64,8 @@ bool bluetoothSendJson(const JsonDocument &doc) {
     if (!bluetoothPackJson(doc, payload)) {
         return false;
     }
+    bluetoothConnected = true;
+    lastBluetoothSendTime = millis();
     Serial1.print(payload);
     return true;
 }
@@ -77,6 +74,8 @@ bool bluetoothSendJsonString(const String &json) {
     if (json.length() == 0) {
         return false;
     }
+    bluetoothConnected = true;
+    lastBluetoothSendTime = millis();
     Serial1.print(json);
     if (!json.endsWith("\n")) {
         Serial1.print('\n');
